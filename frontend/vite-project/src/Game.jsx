@@ -26,7 +26,9 @@ function Game() {
 
   useEffect(() => {
     // Create WebSocket connection to port 7654
-    const websocket = new WebSocket('ws://localhost:7654');
+    // Use environment variable or default to current hostname
+    const wsHost = import.meta.env.VITE_WS_HOST || window.location.hostname;
+    const websocket = new WebSocket(`ws://${wsHost}:7654`);
 
     websocket.onopen = () => {
       console.log('WebSocket Connected');

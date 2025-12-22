@@ -2,6 +2,8 @@ require('dotenv').config();
 const { WebSocketServer } = require('ws');
 const OpenAI = require('openai').default;
 const { readFileSync } = require('fs');
+const os = require('os');
+const qrcode = require('qrcode-terminal');
 
 const client = new OpenAI({
     apiKey: process.env.API_KEY,
@@ -28,6 +30,21 @@ try {
   } catch (err) {
     console.error('Error reading system prompt:', err);
   }
+
+// Function to get local IP address
+function getLocalIPAddress() {
+    const interfaces = os.networkInterfaces();
+    for (const interfaceName in interfaces) {
+        const addresses = interfaces[interfaceName];
+        for (const addr of addresses) {
+            // Skip internal (loopback) and non-IPv4 addresses
+            if (addr.family === 'IPv4' && !addr.internal) {
+                return addr.address;
+            }
+        }
+    }
+    return 'localhost'; // Fallback
+}
 
 async function newQuestion() {
     // Check if there are any topics
@@ -106,10 +123,19 @@ function userReady(username) {
 
 
 
-// Create a server on port 7654
-const wss = new WebSocketServer({ port: 7654 });
+// Create a server on port 7654, accessible from any network interface
+const wss = new WebSocketServer({ 
+    port: 7654,
+    host: '0.0.0.0' // Listen on all network interfaces
+});
 
-console.log("WebSocket server started on port 7654");
+// Get local IP and display connection info
+const localIP = getLocalIPAddress();
+const frontendURL = `http://${localIP}:5173`;
+
+console.log(`\n${frontendURL}\n`);
+
+qrcode.generate(frontendURL, { small: true });
 
 wss.on('connection', (ws) => {
     console.log('New client connected!');
