@@ -18,11 +18,38 @@ function Game() {
   const [clickedOptions, setClickedOptions] = useState([]);
   const [questionsRemaining, setQuestionsRemaining] = useState(10);
   const [hasGivenUp, setHasGivenUp] = useState(false);
+  const [showScoreboard, setShowScoreboard] = useState(false);
+  const [currentTopic, setCurrentTopic] = useState('');
+  const [myAnswerPopup, setMyAnswerPopup] = useState(null);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const leaderboardTimerRef = useRef(null);
 
   // Keep optionsRef in sync with options state
   useEffect(() => {
     optionsRef.current = options;
   }, [options]);
+
+  // Auto-dismiss answer popup after 4 seconds
+  useEffect(() => {
+    if (myAnswerPopup) {
+      const timer = setTimeout(() => {
+        setMyAnswerPopup(null);
+      }, 4000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [myAnswerPopup]);
+
+  // Auto-dismiss leaderboard after 4 seconds
+  useEffect(() => {
+    if (showLeaderboard) {
+      const timer = setTimeout(() => {
+        setShowLeaderboard(false);
+      }, 4000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [showLeaderboard]);
 
   useEffect(() => {
     // Create WebSocket connection to port 7654
@@ -52,6 +79,7 @@ function Game() {
           
           setQuestionData(parsedQuestionData);
           setCurrentQuestion(parsedQuestionData.question);
+          setCurrentTopic(parsedQuestionData.category || parsedQuestionData.topic || 'Quiz');
           
           // Convert options object to array
           const optionsArray = Object.values(parsedQuestionData.options || {});
@@ -60,6 +88,9 @@ function Game() {
           // Reset clicked options and set questions remaining to 10
           setClickedOptions([]);
           setQuestionsRemaining(10);
+          setHasGivenUp(false); // Reset give up button at the start of each round
+          setMyAnswerPopup(null); // Reset answer popup
+          setShowLeaderboard(false); // Hide leaderboard for new round
           
           // Check if it's this user's turn
           if (data.turn === username) {
@@ -110,6 +141,15 @@ function Game() {
               [data.username]: data.score
             }));
           }
+          
+          // Clear any existing timer and set a new one to show leaderboard
+          if (leaderboardTimerRef.current) {
+            clearTimeout(leaderboardTimerRef.current);
+          }
+          
+          leaderboardTimerRef.current = setTimeout(() => {
+            setShowLeaderboard(true);
+          }, 500); // Wait 500ms to ensure all scores are received
         }
         if (data.type === 'next-turn') {
           if (data.nextTurn === username) {
@@ -150,6 +190,12 @@ function Game() {
     if (ws && ws.readyState === WebSocket.OPEN) {
       const optionNumber = (index + 1).toString();
       const answer = questionData?.answers?.[optionNumber];
+      
+      // Show answer popup to the user
+      setMyAnswerPopup({
+        question: options[index],
+        answer: answer
+      });
       
       ws.send(JSON.stringify({
         type: 'question-click',
@@ -203,14 +249,38 @@ function Game() {
     }
   };
 
+  // Get sorted leaderboard
+  const getLeaderboard = () => {
+    return Object.entries(playerScores)
+      .map(([player, score]) => ({
+        player,
+        score: typeof score === 'string' ? parseInt(score.split('+')[0]) : score
+      }))
+      .sort((a, b) => b.score - a.score);
+  };
+
   return (
     <div className="game-container">
-      <div className="scoreboard">
+      {/* Sticky Header Bar */}
+      <div className="header-bar">
+        <div className="topic-display">
+          {currentTopic && <span className="topic-text">{currentTopic}</span>}
+        </div>
+        <button 
+          className="scoreboard-toggle-button"
+          onClick={() => setShowScoreboard(!showScoreboard)}
+        >
+          {showScoreboard ? 'Hide Scores' : 'Scores'}
+        </button>
+      </div>
+
+      {/* Toggleable Scoreboard */}
+      <div className={`scoreboard ${showScoreboard ? 'visible' : 'hidden'}`}>
         <h2>Scoreboard</h2>
         <div className="scores-list">
           {Object.entries(playerScores).length > 0 ? (
             Object.entries(playerScores).map(([player, score]) => (
-              <div key={player} className={`score-item ${player === username ? 'current-user' : ''}`}>
+              <div key={player} className="score-item">
                 <span className="player-name">{player}</span>
                 <span className="player-score">{score}</span>
               </div>
@@ -246,10 +316,22 @@ function Game() {
           <button 
             className="give-up-button"
             onClick={handleGiveUp}
-            disabled={connectionStatus !== 'Connected' || hasGivenUp}
+            disabled={connectionStatus !== 'Connected' || hasGivenUp || !isMyTurn}
           >
             Give Up
           </button>
+        </div>
+      )}
+
+      {/* My Answer Popup */}
+      {myAnswerPopup && (
+        <div className="popup-overlay">
+          <div className="popup-content">
+            <div className="popup-info">
+              <p className="popup-question">{myAnswerPopup.question}</p>
+              <p className="correct-answer-label">Correct answer: <strong>{myAnswerPopup.answer}</strong></p>
+            </div>
+          </div>
         </div>
       )}
 
@@ -257,13 +339,30 @@ function Game() {
         <div className="popup-overlay">
           <div className="popup-content">
             <div className="popup-info">
-              <p><strong>User:</strong> {popupData.username}</p>
-              <p><strong>Question:</strong> {popupData.question}</p>
-              <p><strong>Answer:</strong> {popupData.answer}</p>
+              <p className="popup-question">{popupData.question}</p>
+              <p>Did <strong>{popupData.username}</strong> say <strong>{popupData.answer}</strong>?</p>
             </div>
             <div className="popup-buttons">
               <button className="popup-yes" onClick={handlePopupYes}>Yes</button>
               <button className="popup-no" onClick={handlePopupNo}>No</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* End of Round Leaderboard */}
+      {showLeaderboard && (
+        <div className="popup-overlay">
+          <div className="leaderboard-popup">
+            <h2 className="leaderboard-title">Round Results</h2>
+            <div className="leaderboard-list">
+              {getLeaderboard().map((entry, index) => (
+                <div key={entry.player} className="leaderboard-item">
+                  <span className="leaderboard-rank">{index + 1}.</span>
+                  <span className="leaderboard-player">{entry.player}</span>
+                  <span className="leaderboard-score">{entry.score}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>

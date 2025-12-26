@@ -1,27 +1,25 @@
 require('dotenv').config();
 const { WebSocketServer } = require('ws');
-const OpenAI = require('openai').default;
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { readFileSync } = require('fs');
 const os = require('os');
 const qrcode = require('qrcode-terminal');
 
-const client = new OpenAI({
-    apiKey: process.env.API_KEY,
-    baseURL: "https://api.deepseek.com"
-    //timeout: 360000, // Override default timeout with longer timeout for reasoning models
-});
+const genAI = new GoogleGenerativeAI(process.env.API_KEY);
+const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
 let userScores = new Map();
 let userScoresOnHand = new Map();
 var users = [];
 let allUsers = [];
 var usersRemaining = [];
-let questionTopics = ['historia', 'avaruus', 'tietokoneet', 'elokuvat'];
+let questionTopics = ['mitä vaan'];
 var turn = 0;
 var äänestänyt = 0
 var äänet = 0
 var everyoneIn = false;
 var questionCount = 10;
+let cachedQuestion = null; // Pre-fetched question ready to use
 
 let systemPrompt = "oot ai tai jotain"; // Default prompt
 
@@ -46,11 +44,12 @@ function getLocalIPAddress() {
     return 'localhost'; // Fallback
 }
 
-async function newQuestion() {
+// Function to generate a new question from the API
+async function generateQuestion() {
     // Check if there are any topics
     if (questionTopics.length === 0) {
         console.log('No topics available yet!');
-        return;
+        return null;
     }
     
     const topic = questionTopics[Math.floor(Math.random() * questionTopics.length)];
@@ -58,25 +57,43 @@ async function newQuestion() {
     console.log('Selected topic:', topic);
     console.log('Selected question type:', questionType);
     
-    const completion = await client.chat.completions.create({
-        //model: "grok-4-1-fast-non-reasoning",
-        model: "deepseek-chat",
-        messages: [
-            {
-                role: "system",
-                content: systemPrompt
-            },
-            {
-                role: "user",
-                content: topic + "\n" + questionType
-            },
-        ],
-        temperature:1.2,
+    const prompt = `${systemPrompt}\n\n${topic}\n${questionType}`;
+    
+    const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: {
+            temperature: 1.2,
+            topK: 40,
+            topP: 0.95,
+        },
     });
-    console.log(completion.choices[0].message.content);
-    let question = completion.choices[0].message.content;
+    
+    const response = result.response;
+    let question = response.text();
+    //console.log(question);
     question = question.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
     return question;
+}
+
+// Function to fetch and cache a new question in the background
+async function fetchAndCacheQuestion() {
+    try {
+        console.log('Fetching new question for cache...');
+        cachedQuestion = await generateQuestion();
+        console.log('Question cached and ready!');
+    } catch (error) {
+        console.error('Error fetching question:', error);
+    }
+}
+
+// Function to get the cached question and immediately fetch a new one
+async function getQuestion() {
+    const questionToReturn = cachedQuestion;
+    
+    // Fetch new question in background (don't await)
+    fetchAndCacheQuestion();
+    
+    return questionToReturn;
 }
 
 function getTurn() {
@@ -137,6 +154,10 @@ console.log(`\n${frontendURL}\n`);
 
 qrcode.generate(frontendURL, { small: true });
 
+// Initialize the question cache
+console.log('Initializing question cache...');
+fetchAndCacheQuestion();
+
 wss.on('connection', (ws) => {
     console.log('New client connected!');
     let clientUsername = 'Anonymous';
@@ -173,6 +194,15 @@ wss.on('connection', (ws) => {
                     let newScore = userScores.get(username);
                     newScore = `${newScore} + ${userScoresOnHand.get(username)}`;
                     console.log('new score of ' + username + ' is: ' + newScore)
+                    
+                    questionCount--;
+                
+                // Check if round should end (no questions left or no users remaining)
+                if (questionCount == 0 || usersRemaining.length == 0) {
+                    endOfRound();
+                    questionRequested();
+                }
+                else {
                     const nextTurn = getTurn();
                     wss.clients.forEach((client) => {
                         if (client.readyState === 1) {
@@ -184,18 +214,13 @@ wss.on('connection', (ws) => {
                             }));
                         }
                     });
-
-                    questionCount--;
-                if (questionCount == 0) {
-                    questionRequested();
-                    endOfRound();
                 }
             }
         }
 
         async function questionRequested() {
             console.log('New question requested');
-            let newQ = await newQuestion();
+            let newQ = await getQuestion();
             const nextTurn = getTurn();
             wss.clients.forEach((client) => {
                 if (client.readyState === 1) { 
@@ -214,6 +239,12 @@ wss.on('connection', (ws) => {
             äänet = 0;
             äänestänyt = 0;
             usersRemaining = [...allUsers];
+            
+            // Ensure turn index is valid for the reset array
+            if (turn >= usersRemaining.length) {
+                turn = 0;
+            }
+            
             for (const username of allUsers) {
                 addHandToScore(username);
                 const newScore = userScores.get(username).toString();
@@ -298,8 +329,8 @@ wss.on('connection', (ws) => {
 
                 questionCount--;
                 if (questionCount == 0 || usersRemaining.length == 0) {
-                    questionRequested();
                     endOfRound();
+                    questionRequested();
                 }
                 
                 else {
