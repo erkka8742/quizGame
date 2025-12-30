@@ -6,7 +6,7 @@ const os = require('os');
 const qrcode = require('qrcode-terminal');
 
 const genAI = new GoogleGenerativeAI(process.env.API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+const model = genAI.getGenerativeModel({ model: "gemini-3-pro-preview" });
 
 let userScores = new Map();
 let userScoresOnHand = new Map();
@@ -14,7 +14,7 @@ var users = [];
 let allUsers = [];
 var usersRemaining = [];
 let questionTopics = ['mitä vaan'];
-var turn = 0;
+var turn = '';
 var äänestänyt = 0
 var äänet = 0
 var everyoneIn = false;
@@ -78,7 +78,7 @@ async function generateQuestion() {
 // Function to fetch and cache a new question in the background
 async function fetchAndCacheQuestion() {
     try {
-        console.log('Fetching new question for cache...');
+        //console.log('Fetching new question for cache...');
         cachedQuestion = await generateQuestion();
         console.log('Question cached and ready!');
     } catch (error) {
@@ -86,27 +86,41 @@ async function fetchAndCacheQuestion() {
     }
 }
 
-// Function to get the cached question and immediately fetch a new one
+// Function to get the cached question
 async function getQuestion() {
-    const questionToReturn = cachedQuestion;
-    
-    // Fetch new question in background (don't await)
-    fetchAndCacheQuestion();
-    
-    return questionToReturn;
+    return cachedQuestion;
 }
 
 function getTurn() {
-    const nextTurn = usersRemaining[turn];
-    console.log('Next turn:', nextTurn);
-    const userCount = usersRemaining.length - 1
-    if (turn == userCount) {
-        turn = 0
+    console.log('remainingUsers:', usersRemaining)
+    console.log('previous turn:', turn)
+    let prevIndex = allUsers.indexOf(turn);
+
+    // After end of round OR when current turn player was removed,
+    // find next player in usersRemaining that comes after prevIndex in allUsers
+    if (!usersRemaining.includes(turn) || (questionCount == 10 && usersRemaining.length == allUsers.length)) {
+        // Start from the player after the previous turn in allUsers
+        for (let i = 1; i <= allUsers.length; i++) {
+            let nextIndex = (prevIndex + i) % allUsers.length;
+            let nextPlayer = allUsers[nextIndex];
+            
+            if (usersRemaining.includes(nextPlayer)) {
+                turn = nextPlayer;
+                console.log('Next turn (after player removed):', turn)
+                return turn;
+            }
+        }
     }
+    // Current turn player is still in usersRemaining
     else {
-        turn++
+        let currentIndexInRemaining = usersRemaining.indexOf(turn);
+        let nextIndex = (currentIndexInRemaining + 1) % usersRemaining.length;
+        turn = usersRemaining[nextIndex];
+        console.log('Current turn:', turn)
+        return turn;
     }
-    return nextTurn;
+    
+	return turn;
 }
 
 function add1PointOnHand(username) {
@@ -182,10 +196,7 @@ wss.on('connection', (ws) => {
                     usersRemaining.splice(usersRemaining.indexOf(username), 1);
                     console.log('user removed from remaining users')
                     console.log(usersRemaining)
-                    turn--;
-                    if (turn < 0) {
-                        turn = 0;
-                    }
+                    
                     console.log(turn)
                     deleteHand(username);
                 }
@@ -194,13 +205,13 @@ wss.on('connection', (ws) => {
                     let newScore = userScores.get(username);
                     newScore = `${newScore} + ${userScoresOnHand.get(username)}`;
                     console.log('new score of ' + username + ' is: ' + newScore)
-                    
                     questionCount--;
+                    console.log('questionCount:', questionCount)
                 
                 // Check if round should end (no questions left or no users remaining)
                 if (questionCount == 0 || usersRemaining.length == 0) {
+
                     endOfRound();
-                    questionRequested();
                 }
                 else {
                     const nextTurn = getTurn();
@@ -240,10 +251,9 @@ wss.on('connection', (ws) => {
             äänestänyt = 0;
             usersRemaining = [...allUsers];
             
-            // Ensure turn index is valid for the reset array
-            if (turn >= usersRemaining.length) {
-                turn = 0;
-            }
+            let lastIndex = allUsers.indexOf(turn);
+            let nextIndex = (lastIndex + 1) % allUsers.length;
+            turn = allUsers[nextIndex];
             
             for (const username of allUsers) {
                 addHandToScore(username);
@@ -258,7 +268,7 @@ wss.on('connection', (ws) => {
                 }
             });
             }
-            
+            fetchAndCacheQuestion();
         }
 
         try {
@@ -272,6 +282,7 @@ wss.on('connection', (ws) => {
                 allUsers.push(clientUsername);
                 users.push(clientUsername);
                 usersRemaining.push(clientUsername);
+                turn = clientUsername;
             } else if (parsedData.type === 'topic') {
                 
                 console.log(`${parsedData.username}: ${parsedData.text}`);
@@ -286,10 +297,8 @@ wss.on('connection', (ws) => {
                         }));
                     }
                 });
-            } else if (parsedData.type === 'new-question') {
-                console.log('New question requested');
-                questionRequested();
-            } else if (parsedData.type === 'question-click') {
+            }  
+            else if (parsedData.type === 'question-click') {
                 console.log(`${parsedData.username} clicked question: ${parsedData.question}`);
                 wss.clients.forEach((client) => {
                     if (client.readyState === 1) {
@@ -313,6 +322,7 @@ wss.on('connection', (ws) => {
                 if (everyoneIn) {
                     console.log('everyone is ready');
                     questionRequested();
+                    fetchAndCacheQuestion();
                 }
             }
             else if (parsedData.type === 'give-up') {
@@ -321,16 +331,11 @@ wss.on('connection', (ws) => {
                 usersRemaining.splice(usersRemaining.indexOf(username), 1);
                 console.log('user removed from remaining users')
                 console.log(usersRemaining)
-                turn--;
-                if (turn < 0) {
-                    turn = 0;
-                }
+                
                 console.log(turn)
 
-                questionCount--;
-                if (questionCount == 0 || usersRemaining.length == 0) {
+                if (usersRemaining.length == 0) {
                     endOfRound();
-                    questionRequested();
                 }
                 
                 else {
@@ -344,6 +349,10 @@ wss.on('connection', (ws) => {
                         }
                     });
                 }
+            }
+            else if (parsedData.type === 'continue-round') {
+                console.log('continue round received');
+                questionRequested();
             }
         } catch (e) {
             console.log(`${clientUsername}: ${data}`);

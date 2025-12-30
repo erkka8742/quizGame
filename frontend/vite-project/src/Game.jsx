@@ -6,7 +6,7 @@ import './Game.css'
 function Game() {
   const navigate = useNavigate();
   const [ws, setWs] = useState(null);
-  const [connectionStatus, setConnectionStatus] = useState('Disconnected');
+  const [connectionStatus, setConnectionStatus] = useState('Ei yhdistetty');
   const username = Cookies.get('userToken') || 'Anonymous';
   const [currentQuestion, setCurrentQuestion] = useState(null);
   const [options, setOptions] = useState([]);
@@ -22,12 +22,17 @@ function Game() {
   const [currentTopic, setCurrentTopic] = useState('');
   const [myAnswerPopup, setMyAnswerPopup] = useState(null);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [currentTurn, setCurrentTurn] = useState('');
   const leaderboardTimerRef = useRef(null);
+  const autoContinueTimerRef = useRef(null);
+  const roundEndProcessed = useRef(false);
 
   // Keep optionsRef in sync with options state
   useEffect(() => {
     optionsRef.current = options;
   }, [options]);
+
+  // Keep pendingQuestionRef in sync with pendingQuestion state
 
   // Auto-dismiss answer popup after 4 seconds
   useEffect(() => {
@@ -40,16 +45,6 @@ function Game() {
     }
   }, [myAnswerPopup]);
 
-  // Auto-dismiss leaderboard after 4 seconds
-  useEffect(() => {
-    if (showLeaderboard) {
-      const timer = setTimeout(() => {
-        setShowLeaderboard(false);
-      }, 4000);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [showLeaderboard]);
 
   useEffect(() => {
     // Create WebSocket connection to port 7654
@@ -59,7 +54,7 @@ function Game() {
 
     websocket.onopen = () => {
       console.log('WebSocket Connected');
-      setConnectionStatus('Connected');
+      setConnectionStatus('Yhdistetty');
       // Send ready message with username when connection is established
       websocket.send(JSON.stringify({ 
         type: 'ready-message', 
@@ -88,11 +83,17 @@ function Game() {
           // Reset clicked options and set questions remaining to 10
           setClickedOptions([]);
           setQuestionsRemaining(10);
-          setHasGivenUp(false); // Reset give up button at the start of each round
-          setMyAnswerPopup(null); // Reset answer popup
-          setShowLeaderboard(false); // Hide leaderboard for new round
+          setHasGivenUp(false);
+          setMyAnswerPopup(null);
+          setShowLeaderboard(false);
+          roundEndProcessed.current = false;
+          console.log('New question received - roundEndProcessed reset to false');
+          
+          // Scroll to top when new question arrives
+          window.scrollTo({ top: 0, behavior: 'smooth' });
           
           // Check if it's this user's turn
+          setCurrentTurn(data.turn);
           if (data.turn === username) {
             setIsMyTurn(true);
           } else {
@@ -127,6 +128,7 @@ function Game() {
           }
           
           // Check if it's the current user's turn
+          setCurrentTurn(data.nextTurn);
           if (data.nextTurn === username) {
             setIsMyTurn(true);
           } else {
@@ -134,6 +136,8 @@ function Game() {
           }
         }
         if (data.type === 'end-of-round') {
+          console.log('Received end-of-round for:', data.username);
+          
           // Update player score at end of round
           if (data.username && data.score) {
             setPlayerScores(prevScores => ({
@@ -142,16 +146,38 @@ function Game() {
             }));
           }
           
-          // Clear any existing timer and set a new one to show leaderboard
-          if (leaderboardTimerRef.current) {
-            clearTimeout(leaderboardTimerRef.current);
+          // Only set timers ONCE per round (for the first end-of-round message)
+          if (!roundEndProcessed.current) {
+            console.log('✓ First end-of-round message - setting up timers');
+            roundEndProcessed.current = true;
+            
+            // Clear any existing timers
+            if (leaderboardTimerRef.current) {
+              clearTimeout(leaderboardTimerRef.current);
+            }
+            if (autoContinueTimerRef.current) {
+              clearTimeout(autoContinueTimerRef.current);
+            }
+            
+            // Show leaderboard after short delay
+            leaderboardTimerRef.current = setTimeout(() => {
+              console.log('Showing leaderboard');
+              setShowLeaderboard(true);
+              
+              // Set 4-second auto-continue timer
+              autoContinueTimerRef.current = setTimeout(() => {
+                console.log('Auto-continue timer fired - requesting new round');
+                if (websocket && websocket.readyState === WebSocket.OPEN) {
+                  websocket.send(JSON.stringify({
+                    type: 'continue-round'
+                  }));
+                }
+              }, 4000);
+            }, 500);
           }
-          
-          leaderboardTimerRef.current = setTimeout(() => {
-            setShowLeaderboard(true);
-          }, 500); // Wait 500ms to ensure all scores are received
         }
         if (data.type === 'next-turn') {
+          setCurrentTurn(data.nextTurn);
           if (data.nextTurn === username) {
             setIsMyTurn(true);
             setHasGivenUp(false); // Reset give up button when it's your turn again
@@ -166,12 +192,12 @@ function Game() {
 
     websocket.onerror = (error) => {
       console.error('WebSocket error:', error);
-      setConnectionStatus('Error');
+      setConnectionStatus('Virhe');
     };
 
     websocket.onclose = () => {
       console.log('WebSocket Disconnected');
-      setConnectionStatus('Disconnected');
+      setConnectionStatus('Ei yhdistetty');
     };
 
     setWs(websocket);
@@ -179,6 +205,12 @@ function Game() {
     // Cleanup function to close the connection when component unmounts
     return () => {
       websocket.close();
+      if (leaderboardTimerRef.current) {
+        clearTimeout(leaderboardTimerRef.current);
+      }
+      if (autoContinueTimerRef.current) {
+        clearTimeout(autoContinueTimerRef.current);
+      }
     };
   }, [username]);
 
@@ -249,6 +281,7 @@ function Game() {
     }
   };
 
+
   // Get sorted leaderboard
   const getLeaderboard = () => {
     return Object.entries(playerScores)
@@ -265,18 +298,19 @@ function Game() {
       <div className="header-bar">
         <div className="topic-display">
           {currentTopic && <span className="topic-text">{currentTopic}</span>}
+          {currentTurn && <span className="current-turn-text">Vuorossa: {currentTurn}</span>}
         </div>
         <button 
           className="scoreboard-toggle-button"
           onClick={() => setShowScoreboard(!showScoreboard)}
         >
-          {showScoreboard ? 'Hide Scores' : 'Scores'}
+          {showScoreboard ? 'Sulje' : 'Pisteet'}
         </button>
       </div>
 
       {/* Toggleable Scoreboard */}
       <div className={`scoreboard ${showScoreboard ? 'visible' : 'hidden'}`}>
-        <h2>Scoreboard</h2>
+        <h2>Pisteet</h2>
         <div className="scores-list">
           {Object.entries(playerScores).length > 0 ? (
             Object.entries(playerScores).map(([player, score]) => (
@@ -286,7 +320,7 @@ function Game() {
               </div>
             ))
           ) : (
-            <p className="no-scores">No scores yet</p>
+            <p className="no-scores">Ei vielä pisteitä</p>
           )}
         </div>
       </div>
@@ -316,9 +350,9 @@ function Game() {
           <button 
             className="give-up-button"
             onClick={handleGiveUp}
-            disabled={connectionStatus !== 'Connected' || hasGivenUp || !isMyTurn}
+            disabled={connectionStatus !== 'Yhdistetty' || hasGivenUp || !isMyTurn}
           >
-            Give Up
+            Luovuta
           </button>
         </div>
       )}
@@ -329,7 +363,7 @@ function Game() {
           <div className="popup-content">
             <div className="popup-info">
               <p className="popup-question">{myAnswerPopup.question}</p>
-              <p className="correct-answer-label">Correct answer: <strong>{myAnswerPopup.answer}</strong></p>
+              <p className="correct-answer-label">Oikea vastaus: <strong>{myAnswerPopup.answer}</strong></p>
             </div>
           </div>
         </div>
@@ -340,11 +374,11 @@ function Game() {
           <div className="popup-content">
             <div className="popup-info">
               <p className="popup-question">{popupData.question}</p>
-              <p>Did <strong>{popupData.username}</strong> say <strong>{popupData.answer}</strong>?</p>
+              <p>Sanoiko <strong>{popupData.username}</strong> <strong>{popupData.answer}</strong>?</p>
             </div>
             <div className="popup-buttons">
-              <button className="popup-yes" onClick={handlePopupYes}>Yes</button>
-              <button className="popup-no" onClick={handlePopupNo}>No</button>
+              <button className="popup-yes" onClick={handlePopupYes}>Kyllä</button>
+              <button className="popup-no" onClick={handlePopupNo}>Ei</button>
             </div>
           </div>
         </div>
@@ -354,7 +388,7 @@ function Game() {
       {showLeaderboard && (
         <div className="popup-overlay">
           <div className="leaderboard-popup">
-            <h2 className="leaderboard-title">Round Results</h2>
+            <h2 className="leaderboard-title">Pistetilanne</h2>
             <div className="leaderboard-list">
               {getLeaderboard().map((entry, index) => (
                 <div key={entry.player} className="leaderboard-item">

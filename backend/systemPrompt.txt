@@ -38,8 +38,8 @@ TYYPPI 3: JÄRJESTYS
 TYYPPI 4: KATEGORIAT / VÄRIT
 - Kysymys: "Mihin ryhmään tämä kuuluu?" tai "Minkä värinen tämä on?".
 - Mekaniikka: Monivalinta rajatuista vaihtoehdoista.
-- Rakenne: Luo JSONiin "legend"-lista, jossa on 2-5 vaihtoehtoa (esim. ["Neste", "Kaasu", "Kiinteä"] tai ["Punainen", "Sininen"]).
-- Answers-logiikka: Vastaus on jokin "legend"-listan arvoista.
+- Rakenne: Kysymyksessä on lista, jossa on 2-5 vaihtoehtoa (esim. ["Neste", "Kaasu", "Kiinteä"] tai ["Punainen", "Sininen"]).
+- Answers-logiikka: Vastaus on jokin listan arvoista.
 
 TYYPPI 5: PUUTTUVA SANA
 - Kysymys: "Mikä sana puuttuu?" (Sanonnat, biisien nimet, yhdyssanat).
@@ -55,7 +55,6 @@ Palauta vain validi JSON. Älä lisää markdown-merkintöjä (kuten ```json).
     "type": "numero (1-5)",
     "topic": "aihe",
     "question": "Kysymys tekstinä",
-    "legend": ["Kat 1", "Kat 2"...], // Vain tyypissä 4 (muuten null tai tyhjä lista)
     "options": {
         "1": "Vaihtoehto 1",
         "2": "Vaihtoehto 2",

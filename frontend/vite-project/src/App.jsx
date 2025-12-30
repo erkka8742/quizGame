@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import Cookies from 'js-cookie';
 import './App.css'
@@ -8,9 +8,10 @@ function App() {
   const [ws, setWs] = useState(null);
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
-  const [connectionStatus, setConnectionStatus] = useState('Disconnected');
+  const [connectionStatus, setConnectionStatus] = useState('Ei yhdistetty');
   const [username, setUsername] = useState('');
   const [isUsernameSet, setIsUsernameSet] = useState(false);
+  const inputRef = useRef(null);
 
   const handleLogin = (token) => {
     Cookies.set('userToken', token, { 
@@ -32,7 +33,7 @@ function App() {
 
     websocket.onopen = () => {
       console.log('WebSocket Connected');
-      setConnectionStatus('Connected');
+      setConnectionStatus('Yhdistetty');
       // Send username to server immediately after connection
       websocket.send(JSON.stringify({ type: 'username', username: username }));
     };
@@ -56,12 +57,12 @@ function App() {
 
     websocket.onerror = (error) => {
       console.error('WebSocket error:', error);
-      setConnectionStatus('Error');
+      setConnectionStatus('Virhe');
     };
 
     websocket.onclose = () => {
       console.log('WebSocket Disconnected');
-      setConnectionStatus('Disconnected');
+      setConnectionStatus('Ei yhdistetty');
     };
 
     setWs(websocket);
@@ -93,22 +94,29 @@ function App() {
       });
       ws.send(messageData);
       setInputMessage('');
+      // Keep focus on input to prevent keyboard from closing on mobile
+      setTimeout(() => {
+        if (inputRef.current) {
+          inputRef.current.focus();
+        }
+      }, 0);
     }
   };
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {
+      e.preventDefault();
       sendMessage();
     }
   };
 
   return (
     <div className="app">
-      <h1>ai-Smart10</h1>
+      <h1>AI-Smart10</h1>
       
       {!isUsernameSet ? (
         <div className="username-setup">
-          <h2>Enter Your Username</h2>
+          <h2>Anna käyttäjänimi</h2>
           <div className="username-input-container">
             <input
               type="text"
@@ -118,23 +126,22 @@ function App() {
                 handleLogin(e.target.value);
               }}
               onKeyPress={handleUsernameKeyPress}
-              placeholder="Enter your username..."
+              placeholder="Tähän..."
               autoFocus
             />
             <button onClick={handleUsernameSubmit} disabled={!username.trim()}>
-              Connect
+              Noni
             </button>
           </div>
         </div>
       ) : (
         <>
           <div className="status">
-            <span>Username: <strong>{username}</strong> | </span>
-            Status: <span className={`status-${connectionStatus.toLowerCase()}`}>{connectionStatus}</span>
+            Tilanne: <span className={`status-${connectionStatus.toLowerCase()}`}>{connectionStatus}</span>
           </div>
           
           <div className="messages-container">
-            <h2>Enter question topics</h2>
+            <h2>Anna kysymysaiheita</h2>
             <div className="messages">
               {messages.map((msg, index) => (
                 <div key={index} className={`message ${msg.type} ${msg.username === username ? 'own-message' : ''}`}>
@@ -149,18 +156,19 @@ function App() {
 
           <div className="input-container">
             <input
+              ref={inputRef}
               type="text"
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder="Type a message..."
-              disabled={connectionStatus !== 'Connected'}
+              placeholder="Aiheita..."
+              disabled={connectionStatus !== 'Yhdistetty'}
             />
             <button 
               onClick={sendMessage} 
-              disabled={connectionStatus !== 'Connected'}
+              disabled={connectionStatus !== 'Yhdistetty'}
             >
-              Send
+              Lähetä
             </button>
           </div>
 
@@ -168,9 +176,9 @@ function App() {
             <button 
               className="start-game-button"
               onClick={handleStartGame}
-              disabled={connectionStatus !== 'Connected'}
+              disabled={connectionStatus !== 'Yhdistetty'}
             >
-              Ready
+              Valmis
             </button>
           </div>
         </>
