@@ -186,7 +186,7 @@ function App() {
 
   return (
     <div className="app">
-      <h1>AI-Smart10</h1>
+      <h1>PartyQuiz</h1>
 
       {/* Step 1: Username setup */}
       {!isUsernameSet ? (
