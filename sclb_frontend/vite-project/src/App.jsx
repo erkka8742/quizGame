@@ -266,7 +266,10 @@ function App() {
           </div>
 
           <div className="players-list">
-            <h3>Pelaajat ({players.length})</h3>
+            <h3>
+              Pelaajat ({players.length})
+              {players.length === 1 && <span style={{ color: '#ff6b6b', fontSize: '0.9em', marginLeft: '10px' }}>tarvitsee vähintään 2</span>}
+            </h3>
             <ul>
               {players.map((player, index) => (
                 <li key={index} className={player === username ? 'current-player' : ''}>
@@ -312,7 +315,7 @@ function App() {
             <button
               className="start-game-button"
               onClick={handleStartGame}
-              disabled={connectionStatus !== 'Yhdistetty'}
+              disabled={connectionStatus !== 'Yhdistetty' || players.length < 2}
             >
               Valmis
             </button>
