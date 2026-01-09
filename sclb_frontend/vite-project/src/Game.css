@@ -358,7 +358,7 @@
 
 .current-turn-text {
   color: #000000;
-  font-size: 0.75rem;
+  font-size: 0.85rem;
   font-weight: 500;
   opacity: 0.8;
   line-height: 1;
@@ -380,6 +380,16 @@
   background-color: #1a1a1a;
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+}
+
+.scoreboard-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: 98;
 }
 
 .scoreboard {

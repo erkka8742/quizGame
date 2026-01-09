@@ -17,7 +17,6 @@ function Game() {
   const [popupData, setPopupData] = useState(null);
   const [playerScores, setPlayerScores] = useState({});
   const [clickedOptions, setClickedOptions] = useState([]);
-  const [questionsRemaining, setQuestionsRemaining] = useState(10);
   const [hasGivenUp, setHasGivenUp] = useState(false);
   const [showScoreboard, setShowScoreboard] = useState(false);
   const [currentTopic, setCurrentTopic] = useState('');
@@ -27,6 +26,26 @@ function Game() {
   const leaderboardTimerRef = useRef(null);
   const autoContinueTimerRef = useRef(null);
   const roundEndProcessed = useRef(false);
+  const [myScoreButton, setMyScoreButton] = useState('0');
+  const [questionsRemaining, setQuestionsRemaining] = useState(10);
+
+  useEffect(() => {
+      if (myAnswerPopup) {
+        const timer = setTimeout(() => {
+          setMyAnswerPopup(null);
+        }, 3000);
+        return () => clearTimeout(timer);
+      }
+    }, [myAnswerPopup]);
+
+  useEffect(() => {
+    if (popupData) {
+      const timer = setTimeout(() => {
+        voteMissed();
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [popupData]);
 
   // Redirect to lobby if no game code
   useEffect(() => {
@@ -39,18 +58,6 @@ function Game() {
   useEffect(() => {
     optionsRef.current = options;
   }, [options]);
-
-  // Auto-dismiss answer popup after 4 seconds
-  useEffect(() => {
-    if (myAnswerPopup) {
-      const timer = setTimeout(() => {
-        setMyAnswerPopup(null);
-      }, 4000);
-
-      return () => clearTimeout(timer);
-    }
-  }, [myAnswerPopup]);
-
 
   useEffect(() => {
     if (!gameCode) return;
@@ -84,6 +91,7 @@ function Game() {
       }));
     };
 
+    
     websocket.onmessage = (event) => {
       console.log('Message from server:', event.data);
 
@@ -123,7 +131,7 @@ function Game() {
           }
         }
         if (data.type === 'correct-answer') {
-
+          setCurrentTurn('Äänestys')
 
           if (data.username !== username) {
             // Remove the question from the list when another user answers
@@ -147,6 +155,9 @@ function Game() {
               ...prevScores,
               [data.username]: data.score
             }));
+            if (data.username === username) {
+              setMyScoreButton(data.score);
+            }
           }
 
           // Check if it's the current user's turn
@@ -166,6 +177,9 @@ function Game() {
               ...prevScores,
               [data.username]: data.score
             }));
+            if (data.username === username) {
+              setMyScoreButton(data.score);
+            }
           }
 
           // Only set timers ONCE per round (for the first end-of-round message)
@@ -195,8 +209,8 @@ function Game() {
                     gameCode: gameCode
                   }));
                 }
-              }, 4000);
-            }, 500);
+              }, 3000);
+            }, 100);
           }
         }
         if (data.type === 'next-turn') {
@@ -244,6 +258,7 @@ function Game() {
     if (ws && ws.readyState === WebSocket.OPEN) {
       const optionNumber = (index + 1).toString();
       const answer = questionData?.answers?.[optionNumber];
+      setCurrentTurn('Äänestys')
 
       // Show answer popup to the user
       setMyAnswerPopup({
@@ -294,6 +309,19 @@ function Game() {
     setPopupData(null);
   };
 
+  const voteMissed = () => {
+    if (ws && ws.readyState === WebSocket.OPEN && popupData) {
+      ws.send(JSON.stringify({
+        type: 'answer-vote',
+        username: popupData.username,
+        vote: -0,
+        gameCode: gameCode
+      }));
+    }
+    console.log('No clicked');
+    setPopupData(null);
+  };
+
   const handleGiveUp = () => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({
@@ -329,12 +357,16 @@ function Game() {
         <button
           className="scoreboard-toggle-button"
           onClick={() => setShowScoreboard(!showScoreboard)}
-        >
-          {showScoreboard ? 'Sulje' : 'Pisteet'}
+        >{myScoreButton}
         </button>
       </div>
 
+      
+
       {/* Toggleable Scoreboard */}
+      {showScoreboard && (
+        <div className="scoreboard-overlay" onClick={() => setShowScoreboard(false)}></div>
+      )}
       <div className={`scoreboard ${showScoreboard ? 'visible' : 'hidden'}`}>
         <h2>Pisteet</h2>
         <div className="scores-list">
