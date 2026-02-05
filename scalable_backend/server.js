@@ -21,7 +21,7 @@ try {
 
 // Generate a random 4-character game code
 function generateGameCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Avoid confusing characters like O/0, I/1
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let code;
     do {
         code = '';
@@ -58,6 +58,15 @@ function createGame(gameCode) {
         questionTopics: ['mitä vaan'],
         cachedQuestion: null,
 
+        // question type (1-5)
+        questionType: 1,
+        // active question type (the type of the question currently being played)
+        orderQuestionNext: false,
+        orderQuestionNow: false,
+
+        // 1-10 question options answered
+        orderQuestionAnswered: [],
+
         // Game status
         status: 'lobby'  // 'lobby', 'playing', 'ended'
     };
@@ -93,11 +102,17 @@ async function generateQuestion(gameCode) {
     }
 
     const topic = game.questionTopics[Math.floor(Math.random() * game.questionTopics.length)];
-    const questionType = Math.floor(Math.random() * 5) + 1;
+    game.questionType = Math.floor(Math.random() * 5) + 1;
+    if (game.questionType == 3) {
+        game.orderQuestionNext = true;
+    }
+    else {
+        game.orderQuestionNext = false;
+    }
     console.log(`[${gameCode}] Selected topic:`, topic);
-    console.log(`[${gameCode}] Selected question type:`, questionType);
+    console.log(`[${gameCode}] Selected question type:`, game.questionType);
 
-    const prompt = `${systemPrompt}\n\n${topic}\n${questionType}`;
+    const prompt = `${systemPrompt}\n\n${topic}\n${game.questionType}`;
 
     const result = await model.generateContent({
         contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -193,7 +208,7 @@ function addHandToScore(gameCode, username) {
 
 function userReady(gameCode, username) {
     const game = games[gameCode];
-    if (!game) return;
+    if (!game) return false;
 
     const index = game.users.indexOf(username);
     if (index > -1) {
@@ -201,8 +216,10 @@ function userReady(gameCode, username) {
         if (game.users.length == 0) {
             game.everyoneIn = true;
             game.status = 'playing';
+            return true;
         }
     }
+    return false;
 }
 
 // Broadcast message to all clients in a specific game
@@ -294,6 +311,16 @@ wss.on('connection', (ws) => {
 
             console.log(`[${gameCode}] New question requested`);
             let newQ = getQuestion(gameCode);
+
+            // If no cached question yet, wait for it to be generated
+            if (!newQ) {
+                console.log(`[${gameCode}] No cached question yet, waiting for generation...`);
+                await fetchAndCacheQuestion(gameCode);
+                newQ = getQuestion(gameCode);
+            }
+
+            // Snapshot the active question type before the next fetch overwrites it
+            game.activeQuestionType = game.questionType;
             const nextTurn = getTurn(gameCode);
 
             broadcastToGame(gameCode, {
@@ -312,10 +339,18 @@ wss.on('connection', (ws) => {
             game.votes = 0;
             game.voteCount = 0;
             game.usersRemaining = [...game.allUsers];
+            game.orderQuestionAnswered = [];
 
             let lastIndex = game.allUsers.indexOf(game.turn);
             let nextIndex = (lastIndex + 1) % game.allUsers.length;
             game.turn = game.allUsers[nextIndex];
+
+            if (game.orderQuestionNext) {
+                game.orderQuestionNow = true;
+            }
+            else {
+                game.orderQuestionNow = false;
+            }
 
             for (const username of game.allUsers) {
                 addHandToScore(gameCode, username);
@@ -426,13 +461,29 @@ wss.on('connection', (ws) => {
 
             } else if (parsedData.type === 'question-click') {
                 console.log(`[${activeGameCode}] ${parsedData.username} clicked question: ${parsedData.question}`);
-
+                console.log(`[${activeGameCode}] orderQuestionNow:`, game.orderQuestionNow);
+                // if question type is 3, add the answer to the orderQuestionAnswered array
+                if (game.orderQuestionNow) {
+                    let newOption = `${parsedData.answer}: ${parsedData.question}`;
+                    game.orderQuestionAnswered.push(newOption);
+                    game.orderQuestionAnswered.sort((a, b) => parseInt(a) - parseInt(b));
+                    console.log(`[${activeGameCode}] orderQuestionAnswered:`, game.orderQuestionAnswered);
+                    broadcastToGame(activeGameCode, {
+                        type: 'correct-answer',
+                        username: parsedData.username,
+                        question: parsedData.question,
+                        answer: parsedData.answer,
+                        orderQuestionAnswered: game.orderQuestionAnswered
+                    });
+                }
+                else {
                 broadcastToGame(activeGameCode, {
                     type: 'correct-answer',
                     username: parsedData.username,
                     question: parsedData.question,
                     answer: parsedData.answer
                 });
+            }
 
             } else if (parsedData.type === 'answer-vote') {
                 console.log(`[${activeGameCode}] vote received`);
@@ -446,10 +497,10 @@ wss.on('connection', (ws) => {
                 // Add this client to the game's client set
                 game.clients.add(ws);
 
-                userReady(activeGameCode, parsedData.username);
-                if (game.everyoneIn) {
+                const allReady = userReady(activeGameCode, parsedData.username);
+                if (allReady) {
                     console.log(`[${activeGameCode}] everyone is ready`);
-                    questionRequested(activeGameCode);
+                    await questionRequested(activeGameCode);
                     fetchAndCacheQuestion(activeGameCode);
                 }
 

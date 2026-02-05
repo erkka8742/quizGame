@@ -28,6 +28,7 @@ function Game() {
   const roundEndProcessed = useRef(false);
   const [myScoreButton, setMyScoreButton] = useState('0');
   const [questionsRemaining, setQuestionsRemaining] = useState(10);
+  const [orderQuestionAnswered, setOrderQuestionAnswered] = useState([]);
 
   useEffect(() => {
       if (myAnswerPopup) {
@@ -147,6 +148,9 @@ function Game() {
               answer: data.answer
             });
           }
+          if (data.orderQuestionAnswered) {
+            setOrderQuestionAnswered(data.orderQuestionAnswered);
+          }
         }
         if (data.type === 'voting-result') {
           // Update individual player score (as string)
@@ -170,6 +174,8 @@ function Game() {
         }
         if (data.type === 'end-of-round') {
           console.log('Received end-of-round for:', data.username);
+          setOrderQuestionAnswered([]);
+          
 
           // Update player score at end of round
           if (data.username && data.score) {
@@ -351,8 +357,14 @@ function Game() {
       {/* Sticky Header Bar */}
       <div className="header-bar">
         <div className="topic-display">
-          {currentTopic && <span className="topic-text">{currentTopic}</span>}
-          {currentTurn && <span className="current-turn-text">Vuorossa: {currentTurn}</span>}
+          {!currentQuestion ? (
+            <span className="topic-text">Luodaan kysymystä...</span>
+          ) : (
+            <>
+              {currentTopic && <span className="topic-text">{currentTopic}</span>}
+              {currentTurn && <span className="current-turn-text">Vuorossa: {currentTurn}</span>}
+            </>
+          )}
         </div>
         <button
           className="scoreboard-toggle-button"
@@ -386,6 +398,7 @@ function Game() {
       {currentQuestion && (
         <div className="question-display">
           <h1 className="question-text">{currentQuestion}</h1>
+          <p className="order-question-answered-text">{orderQuestionAnswered.join(', ')}</p>
 
           <div className="options-container">
             {options.map((option, index) => {
@@ -432,7 +445,7 @@ function Game() {
           <div className="popup-content">
             <div className="popup-info">
               <p className="popup-question">{popupData.question}</p>
-              <p>Sanoiko <strong>{popupData.username}</strong> <strong>{popupData.answer}</strong>?</p>
+              <p>Sanoiko <span style={{ fontWeight: 'bold', color: 'inherit' }}>{popupData.username}</span> <strong>{popupData.answer}</strong>?</p>
             </div>
             <div className="popup-buttons">
               <button className="popup-yes" onClick={handlePopupYes}>Kyllä</button>
