@@ -205,7 +205,7 @@ function App() {
               autoFocus
             />
             <button onClick={handleUsernameSubmit} disabled={!username.trim()}>
-              Noni
+              Valmis
             </button>
           </div>
         </div>
