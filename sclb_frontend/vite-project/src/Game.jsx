@@ -43,7 +43,7 @@ function Game() {
     if (popupData) {
       const timer = setTimeout(() => {
         voteMissed();
-      }, 5000);
+      }, 10000);
       return () => clearTimeout(timer);
     }
   }, [popupData]);
