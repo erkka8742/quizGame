@@ -673,6 +673,13 @@ h1 {
   color: #ff8c42;
 }
 
+.lobby-test-hint {
+  margin-top: 2rem;
+  text-align: center;
+  font-size: 0.8rem;
+  color: #888;
+}
+
 @media (max-width: 600px) {
   .game-code {
     font-size: 2rem;

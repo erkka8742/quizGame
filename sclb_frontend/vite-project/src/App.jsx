@@ -320,6 +320,8 @@ function App() {
               Valmis
             </button>
           </div>
+
+          <p className="lobby-test-hint">testausta varten avaa uusi incognito sivu</p>
         </>
       )}
     </div>
