@@ -6,7 +6,7 @@ const os = require('os');
 const qrcode = require('qrcode-terminal');
 
 const genAI = new GoogleGenerativeAI(process.env.API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-3-pro-preview" });
+const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
 
 // Store all active games, keyed by game code
 const games = {};
@@ -335,11 +335,19 @@ wss.on('connection', (ws) => {
             if (!game) return;
 
             console.log(`[${gameCode}] end of round`);
+            game.cachedQuestion = null; // Clear old question so clients wait for new one
             game.questionCount = 10;
             game.votes = 0;
             game.voteCount = 0;
             game.usersRemaining = [...game.allUsers];
             game.orderQuestionAnswered = [];
+
+            // Remove "mitä vaan" after first round if there are other topics
+            const mitaVaanIndex = game.questionTopics.indexOf('mitä vaan');
+            if (mitaVaanIndex > -1 && game.questionTopics.length > 1) {
+                game.questionTopics.splice(mitaVaanIndex, 1);
+                console.log(`[${gameCode}] Removed "mitä vaan" from topics`);
+            }
 
             let lastIndex = game.allUsers.indexOf(game.turn);
             let nextIndex = (lastIndex + 1) % game.allUsers.length;

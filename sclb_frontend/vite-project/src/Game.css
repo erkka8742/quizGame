@@ -154,8 +154,9 @@
   border: 2px solid #ffffff;
   border-radius: 12px;
   cursor: pointer;
-  transition: all 0.3s;
+  transition: all 0.3s ease-out;
   width: 100%;
+  overflow: hidden;
 }
 
 .option-button:hover:not(:disabled) {
@@ -182,7 +183,134 @@
 }
 
 .option-text {
+  margin-bottom: 0;
+}
+
+.option-button.expanded {
+  background-color: #ff8c42;
+  border-color: #ff8c42;
+  box-shadow: 0 4px 16px rgba(255, 140, 66, 0.4);
+}
+
+.option-button.expanded .option-text {
   margin-bottom: 0.5rem;
+}
+
+.option-expanded-content {
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+  border-top: 2px solid rgba(0, 0, 0, 0.2);
+  animation: expandContentDesktop 0.25s ease-out;
+}
+
+@keyframes expandContentDesktop {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .option-expanded-content {
+    animation: expandContentMobile 0.3s ease-out;
+    overflow: hidden;
+  }
+
+  @keyframes expandContentMobile {
+    from {
+      opacity: 0;
+      max-height: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      max-height: 200px;
+      transform: translateY(0);
+    }
+  }
+
+  .option-button.expanded {
+    transform: scale(1.02);
+  }
+}
+
+.option-confirm-text {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #000000;
+  margin-bottom: 1rem;
+}
+
+.option-confirm-buttons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.option-confirm-buttons button {
+  animation: buttonFadeIn 0.2s ease-out 0.1s both;
+}
+
+.option-confirm-buttons button:last-child {
+  animation-delay: 0.15s;
+}
+
+@keyframes buttonFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  @keyframes buttonFadeIn {
+    from {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
+
+.option-yes,
+.option-no {
+  padding: 0.75rem 2rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+  min-width: 100px;
+}
+
+.option-yes {
+  background-color: #4caf50;
+  color: white;
+}
+
+.option-yes:hover {
+  background-color: #45a049;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+}
+
+.option-no {
+  background-color: #f44336;
+  color: white;
+}
+
+.option-no:hover {
+  background-color: #da190b;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.4);
 }
 
 .answer-text {

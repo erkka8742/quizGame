@@ -29,6 +29,7 @@ function Game() {
   const [myScoreButton, setMyScoreButton] = useState('0');
   const [questionsRemaining, setQuestionsRemaining] = useState(10);
   const [orderQuestionAnswered, setOrderQuestionAnswered] = useState([]);
+  const [expandedOption, setExpandedOption] = useState(null);
 
   useEffect(() => {
       if (myAnswerPopup) {
@@ -117,6 +118,7 @@ function Game() {
           setHasGivenUp(false);
           setMyAnswerPopup(null);
           setShowLeaderboard(false);
+          setExpandedOption(null);
           roundEndProcessed.current = false;
           console.log('New question received - roundEndProcessed reset to false');
 
@@ -209,6 +211,8 @@ function Game() {
               // Set 4-second auto-continue timer
               autoContinueTimerRef.current = setTimeout(() => {
                 console.log('Auto-continue timer fired - requesting new round');
+                setShowLeaderboard(false);
+                setCurrentQuestion(null); // Show loading state while waiting for new question
                 if (websocket && websocket.readyState === WebSocket.OPEN) {
                   websocket.send(JSON.stringify({
                     type: 'continue-round',
@@ -261,6 +265,11 @@ function Game() {
     if (!isMyTurn) return;
     if (clickedOptions.includes(index)) return;
 
+    // Expand the button to show answer and yes/no options
+    setExpandedOption(index);
+  };
+
+  const handleOptionConfirm = (index) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       const optionNumber = (index + 1).toString();
       const answer = questionData?.answers?.[optionNumber];
@@ -286,7 +295,12 @@ function Game() {
 
       // End turn after clicking a question
       setIsMyTurn(false);
+      setExpandedOption(null);
     }
+  };
+
+  const handleOptionCancel = () => {
+    setExpandedOption(null);
   };
 
   const handlePopupYes = () => {
@@ -405,15 +419,44 @@ function Game() {
               // Don't render clicked options
               if (clickedOptions.includes(index)) return null;
 
+              const isExpanded = expandedOption === index;
+              const optionNumber = (index + 1).toString();
+              const answer = questionData?.answers?.[optionNumber];
+
               return (
-                <button
+                <div
                   key={index}
-                  className={`option-button ${!isMyTurn ? 'disabled' : ''}`}
-                  onClick={() => handleOptionClick(index)}
-                  disabled={!isMyTurn}
+                  className={`option-button ${!isMyTurn ? 'disabled' : ''} ${isExpanded ? 'expanded' : ''}`}
+                  onClick={() => !isExpanded && handleOptionClick(index)}
+                  style={{ cursor: !isMyTurn ? 'not-allowed' : 'pointer' }}
                 >
                   <div className="option-text">{option}</div>
-                </button>
+                  {isExpanded && (
+                    <div className="option-expanded-content">
+                      <div className="option-confirm-text">Haluatko vastata?</div>
+                      <div className="option-confirm-buttons">
+                        <button
+                          className="option-yes"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOptionConfirm(index);
+                          }}
+                        >
+                          Kyllä
+                        </button>
+                        <button
+                          className="option-no"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOptionCancel();
+                          }}
+                        >
+                          Ei
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
