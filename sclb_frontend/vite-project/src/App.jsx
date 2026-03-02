@@ -321,7 +321,7 @@ function App() {
             </button>
           </div>
 
-          <p className="lobby-test-hint">testausta varten avaa uusi incognito sivu</p>
+          <p className="lobby-test-hint">testausta varten avaa uusi incognito sivu. xx</p>
         </>
       )}
     </div>
