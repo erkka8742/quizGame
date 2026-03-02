@@ -6,7 +6,11 @@ const os = require('os');
 const qrcode = require('qrcode-terminal');
 
 const genAI = new GoogleGenerativeAI(process.env.API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview" });
+const model = genAI.getGenerativeModel({ model: "gemini-3.1-pro-preview", config: {
+    thinkingConfig: {
+      thinkingLevel: "low",
+    }
+} });
 
 // Store all active games, keyed by game code
 const games = {};
