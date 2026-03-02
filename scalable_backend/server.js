@@ -332,6 +332,10 @@ wss.on('connection', (ws) => {
                 text: newQ,
                 turn: nextTurn
             });
+
+            // Clear used question and pre-fetch next one
+            game.cachedQuestion = null;
+            fetchAndCacheQuestion(gameCode);
         }
 
         function endOfRound(gameCode) {
