@@ -125,6 +125,11 @@ function Game() {
           // Scroll to top when new question arrives
           window.scrollTo({ top: 0, behavior: 'smooth' });
 
+          // Request fullscreen on mobile only
+          if (!document.fullscreenElement && /Mobi|Android/i.test(navigator.userAgent)) {
+            document.documentElement.requestFullscreen?.().catch(() => {});
+          }
+
           // Check if it's this user's turn
           setCurrentTurn(data.turn);
           if (data.turn === username) {

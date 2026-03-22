@@ -690,3 +690,38 @@ h1 {
     font-size: 1.3rem;
   }
 }
+
+.topic-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.topic-chip {
+  padding: 0.4rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid #ff8c42;
+  background: transparent;
+  color: #ff8c42;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.15s, color 0.15s;
+}
+
+.topic-chip:hover:not(:disabled) {
+  background: #ff8c42;
+  color: #1a1a2e;
+}
+
+.topic-chip-sent {
+  border-color: #555;
+  color: #555;
+  cursor: default;
+}
+
+.topics-loading {
+  color: #888;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}

@@ -61,6 +61,9 @@ function createGame(gameCode) {
         // Content
         questionTopics: ['mitä vaan'],
         cachedQuestion: null,
+        fetchingPromise: null,
+        questionBeingSent: false,
+        pendingQuestionRequest: false,
 
         // question type (1-5)
         questionType: 1,
@@ -134,15 +137,45 @@ async function generateQuestion(gameCode) {
 }
 
 // Function to fetch and cache a new question in the background
-async function fetchAndCacheQuestion(gameCode) {
+function fetchAndCacheQuestion(gameCode) {
+    const game = games[gameCode];
+    if (!game) return Promise.resolve();
+
+    if (game.fetchingPromise) {
+        console.log(`[${gameCode}] Fetch already in progress, reusing promise`);
+        return game.fetchingPromise;
+    }
+
+    game.fetchingPromise = (async () => {
+        try {
+            game.cachedQuestion = await generateQuestion(gameCode);
+            console.log(`[${gameCode}] Question cached and ready!`);
+        } catch (error) {
+            console.error(`[${gameCode}] Error fetching question:`, error);
+        } finally {
+            game.fetchingPromise = null;
+        }
+    })();
+
+    return game.fetchingPromise;
+}
+
+// Generate and broadcast 50 fun Finnish topic suggestions for the lobby
+async function generateAndBroadcastTopics(gameCode) {
     const game = games[gameCode];
     if (!game) return;
 
     try {
-        game.cachedQuestion = await generateQuestion(gameCode);
-        console.log(`[${gameCode}] Question cached and ready!`);
+        const result = await model.generateContent({
+            contents: [{ role: "user", parts: [{ text: 'Anna 50 hauskaa ja vaihtelevaa suomenkielistä tietovisaiaihetta. Vastaa pelkällä JSON-taulukolla, esim. ["Aihe 1","Aihe 2",...]. Älä lisää selityksiä.' }] }],
+            generationConfig: { temperature: 1.3 },
+        });
+        let text = result.response.text().replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        const topics = JSON.parse(text);
+        broadcastToGame(gameCode, { type: 'preset-topics', topics });
+        console.log(`[${gameCode}] Preset topics sent`);
     } catch (error) {
-        console.error(`[${gameCode}] Error fetching question:`, error);
+        console.error(`[${gameCode}] Error generating topics:`, error);
     }
 }
 
@@ -313,13 +346,20 @@ wss.on('connection', (ws) => {
             const game = games[gameCode];
             if (!game) return;
 
+            if (game.questionBeingSent) {
+                console.log(`[${gameCode}] Question already being sent, marking as pending`);
+                game.pendingQuestionRequest = true;
+                return;
+            }
+            game.questionBeingSent = true;
+
             console.log(`[${gameCode}] New question requested`);
             let newQ = getQuestion(gameCode);
 
-            // If no cached question yet, wait for it to be generated
+            // If no cached question yet, wait for the in-progress fetch or start one
             if (!newQ) {
                 console.log(`[${gameCode}] No cached question yet, waiting for generation...`);
-                await fetchAndCacheQuestion(gameCode);
+                await (game.fetchingPromise || fetchAndCacheQuestion(gameCode));
                 newQ = getQuestion(gameCode);
             }
 
@@ -334,8 +374,16 @@ wss.on('connection', (ws) => {
             });
 
             // Clear used question and pre-fetch next one
+            // Keep questionBeingSent = true until the next question is cached,
+            // so any duplicate continue-round in this window is blocked
             game.cachedQuestion = null;
-            fetchAndCacheQuestion(gameCode);
+            fetchAndCacheQuestion(gameCode).then(() => {
+                game.questionBeingSent = false;
+                if (game.pendingQuestionRequest) {
+                    game.pendingQuestionRequest = false;
+                    questionRequested(gameCode);
+                }
+            });
         }
 
         function endOfRound(gameCode) {
@@ -343,7 +391,6 @@ wss.on('connection', (ws) => {
             if (!game) return;
 
             console.log(`[${gameCode}] end of round`);
-            game.cachedQuestion = null; // Clear old question so clients wait for new one
             game.questionCount = 10;
             game.votes = 0;
             game.voteCount = 0;
@@ -377,7 +424,6 @@ wss.on('connection', (ws) => {
                     score: newScore
                 });
             }
-            fetchAndCacheQuestion(gameCode);
         }
 
         try {
@@ -465,6 +511,11 @@ wss.on('connection', (ws) => {
                     players: game.allUsers
                 });
 
+                // Generate topic suggestions for the first player (game creator)
+                if (game.allUsers.length === 1) {
+                    generateAndBroadcastTopics(activeGameCode);
+                }
+
             } else if (parsedData.type === 'topic') {
                 console.log(`[${activeGameCode}] ${parsedData.username}: ${parsedData.text}`);
                 game.questionTopics.push(parsedData.text);
@@ -517,7 +568,6 @@ wss.on('connection', (ws) => {
                 if (allReady) {
                     console.log(`[${activeGameCode}] everyone is ready`);
                     await questionRequested(activeGameCode);
-                    fetchAndCacheQuestion(activeGameCode);
                 }
 
             } else if (parsedData.type === 'give-up') {

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import Cookies from 'js-cookie';
 import './App.css'
 
+
 function App() {
   const navigate = useNavigate();
   const [ws, setWs] = useState(null);
@@ -16,6 +17,8 @@ function App() {
   const [isInGame, setIsInGame] = useState(false);
   const [players, setPlayers] = useState([]);
   const [error, setError] = useState('');
+  const [presetTopics, setPresetTopics] = useState([]);
+  const [sentTopics, setSentTopics] = useState(new Set());
   const inputRef = useRef(null);
   const wsRef = useRef(null);
 
@@ -96,6 +99,10 @@ function App() {
           setPlayers(data.players);
         }
 
+        if (data.type === 'preset-topics') {
+          setPresetTopics(data.topics);
+        }
+
         if (data.type === 'message') {
           setMessages((prevMessages) => [...prevMessages, {
             type: 'received',
@@ -159,15 +166,20 @@ function App() {
     }
   };
 
-  const sendMessage = () => {
-    if (ws && ws.readyState === WebSocket.OPEN && inputMessage.trim()) {
-      const messageData = JSON.stringify({
+  const sendTopic = (topic) => {
+    if (ws && ws.readyState === WebSocket.OPEN && topic.trim()) {
+      ws.send(JSON.stringify({
         type: 'topic',
         username: username,
-        text: inputMessage,
+        text: topic.trim(),
         gameCode: gameCode
-      });
-      ws.send(messageData);
+      }));
+    }
+  };
+
+  const sendMessage = () => {
+    if (ws && ws.readyState === WebSocket.OPEN && inputMessage.trim()) {
+      sendTopic(inputMessage);
       setInputMessage('');
       setTimeout(() => {
         if (inputRef.current) {
@@ -175,6 +187,12 @@ function App() {
         }
       }, 0);
     }
+  };
+
+  const handleTopicChip = (topic) => {
+    if (sentTopics.has(topic)) return;
+    sendTopic(topic);
+    setSentTopics(prev => new Set(prev).add(topic));
   };
 
   const handleKeyPress = (e) => {
@@ -281,6 +299,23 @@ function App() {
 
           <div className="messages-container">
             <h2>Anna kysymysaiheita</h2>
+
+            {presetTopics.length > 0 && (
+              <div className="topic-chips">
+                {presetTopics.map((topic, index) => (
+                  <button
+                    key={index}
+                    className={`topic-chip ${sentTopics.has(topic) ? 'topic-chip-sent' : ''}`}
+                    onClick={() => handleTopicChip(topic)}
+                    disabled={sentTopics.has(topic)}
+                  >
+                    {topic}
+                  </button>
+                ))}
+              </div>
+            )}
+            {presetTopics.length === 0 && <p className="topics-loading">Ladataan aiheita...</p>}
+
             <div className="messages">
               {messages.map((msg, index) => (
                 <div key={index} className={`message ${msg.type} ${msg.username === username ? 'own-message' : ''}`}>
